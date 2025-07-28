@@ -1,4 +1,16 @@
-// Endpoint de salud para verificar que la app está funcionando
+const express = require('express')
+const bodyParser = require('body-parser')
+const { router: mensajeRoute } = require('./routes/enviarMensaje')
+const { iniciarCliente } = require('./whatsapp/client')
+
+const app = express()
+const PORT = process.env.PORT || 3000
+const AUTH_TOKEN = process.env.AUTH_TOKEN || 'TU_TOKEN_SEGURO'
+
+// Middleware para parsing
+app.use(bodyParser.json())
+
+// Endpoint de salud para verificar que la app está funcionando (SIN autenticación)
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -7,7 +19,7 @@ app.get('/health', (req, res) => {
   })
 })
 
-// Dashboard principal (sin autenticación para fácil acceso)
+// Dashboard principal (SIN autenticación para fácil acceso)
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -147,22 +159,12 @@ app.get('/', (req, res) => {
     </script>
 </body>
 </html>`)
-})const express = require('express')
-const bodyParser = require('body-parser')
-const { router: mensajeRoute } = require('./routes/enviarMensaje')
-const { iniciarCliente } = require('./whatsapp/client')
+})
 
-const app = express()
-const PORT = process.env.PORT || 3000
-const AUTH_TOKEN = process.env.AUTH_TOKEN || 'TU_TOKEN_SEGURO'
-
-// Middleware para parsing
-app.use(bodyParser.json())
-
-// Middleware de autenticación
+// Middleware de autenticación (SOLO para rutas de API, NO para dashboard)
 app.use((req, res, next) => {
-  // Permitir endpoint de salud sin autenticación
-  if (req.path === '/health') {
+  // Permitir endpoints públicos sin autenticación
+  if (req.path === '/health' || req.path === '/' || req.path === '/qr-html') {
     return next()
   }
   
@@ -173,16 +175,7 @@ app.use((req, res, next) => {
   next()
 })
 
-// Endpoint de salud para verificar que la app está funcionando
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
-  })
-})
-
-// Rutas principales
+// Rutas principales (CON autenticación)
 app.use('/', mensajeRoute)
 
 // Manejo de errores global
