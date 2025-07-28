@@ -2,24 +2,43 @@ const express = require('express')
 const bodyParser = require('body-parser')
 const { router: mensajeRoute } = require('./routes/enviarMensaje')
 const { iniciarCliente } = require('./whatsapp/client')
+const https = require('https')
 
 const app = express()
 const PORT = process.env.PORT || 3000
 const AUTH_TOKEN = process.env.AUTH_TOKEN || 'TU_TOKEN_SEGURO'
+const RENDER_SERVICE_URL = process.env.RENDER_EXTERNAL_URL || 'https://vacun-whatsapp-service.onrender.com'
 
 // Middleware para parsing
 app.use(bodyParser.json())
 
-// Endpoint de salud para verificar que la app está funcionando (SIN autenticación)
+// KEEP-ALIVE PARA RENDER - Evitar hibernación
+const keepAlive = () => {
+  const url = `${RENDER_SERVICE_URL}/health`
+  
+  setInterval(() => {
+    console.log('🏓 Enviando ping para mantener servicio activo...')
+    
+    https.get(url, (res) => {
+      console.log(`✅ Keep-alive exitoso: ${res.statusCode}`)
+    }).on('error', (err) => {
+      console.log('⚠️ Error en keep-alive:', err.message)
+    })
+  }, 14 * 60 * 1000) // Cada 14 minutos (Render hiberna después de 15 min)
+}
+
+// Endpoint de salud mejorado
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    keepAlive: 'activo'
   })
 })
 
-// Dashboard principal (SIN autenticación para fácil acceso)
+// Dashboard principal
 app.get('/', (req, res) => {
   res.send(`
 <!DOCTYPE html>
@@ -36,20 +55,37 @@ app.get('/', (req, res) => {
         .btn { background: #25D366; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 5px; }
         .btn:hover { background: #1DA851; }
         .form-control { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; }
+        .status-indicator { 
+            width: 12px; 
+            height: 12px; 
+            border-radius: 50%; 
+            display: inline-block; 
+            margin-right: 8px; 
+        }
+        .status-connected { background: #4CAF50; }
+        .status-disconnected { background: #f44336; }
+        .alert { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-danger { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>📱 WhatsApp Bot Dashboard 🤖</h1>
-            <p>Controla tu bot de WhatsApp</p>
+            <p>Controla tu bot de WhatsApp - Con Keep-Alive Activo</p>
         </div>
         
         <div class="card">
             <h3>🔧 Estado del Sistema</h3>
-            <p id="server-status">Verificando...</p>
+            <p id="server-status">
+                <span class="status-indicator status-connected"></span>
+                Servidor activo con Keep-Alive
+            </p>
+            <p id="whatsapp-status">Verificando WhatsApp...</p>
             <button class="btn" onclick="refreshStatus()">🔄 Actualizar</button>
             <button class="btn" onclick="viewQR()">📱 Ver QR</button>
+            <button class="btn" onclick="testKeepAlive()">🏓 Test Keep-Alive</button>
         </div>
         
         <div class="card">
@@ -62,7 +98,7 @@ app.get('/', (req, res) => {
         
         <div class="card">
             <h3>⚙️ Configuración</h3>
-            <input type="text" id="api-url" class="form-control" value="https://vacun-whatsapp-service.onrender.com" placeholder="URL de la API">
+            <input type="text" id="api-url" class="form-control" value="${RENDER_SERVICE_URL}" placeholder="URL de la API">
             <input type="password" id="auth-token" class="form-control" placeholder="Token de autorización">
             <button class="btn" onclick="saveConfig()">💾 Guardar</button>
             <button class="btn" onclick="newQR()">🔄 Nuevo QR</button>
@@ -70,7 +106,7 @@ app.get('/', (req, res) => {
     </div>
 
     <script>
-        let config = { apiUrl: 'https://vacun-whatsapp-service.onrender.com', authToken: '' };
+        let config = { apiUrl: '${RENDER_SERVICE_URL}', authToken: '' };
         
         function loadConfig() {
             const saved = localStorage.getItem('whatsapp-config');
@@ -92,9 +128,23 @@ app.get('/', (req, res) => {
             try {
                 const response = await fetch(config.apiUrl + '/health');
                 const data = await response.json();
-                document.getElementById('server-status').innerHTML = '✅ Servidor: Conectado<br>⏰ Uptime: ' + Math.floor(data.uptime/3600) + 'h';
+                document.getElementById('server-status').innerHTML = 
+                    '<span class="status-indicator status-connected"></span>' +
+                    'Servidor: Conectado<br>⏰ Uptime: ' + Math.floor(data.uptime/3600) + 'h<br>' +
+                    '🏓 Keep-Alive: ' + data.keepAlive;
             } catch (e) {
-                document.getElementById('server-status').innerHTML = '❌ Error de conexión';
+                document.getElementById('server-status').innerHTML = 
+                    '<span class="status-indicator status-disconnected"></span>Error de conexión';
+            }
+        }
+        
+        async function testKeepAlive() {
+            try {
+                const response = await fetch(config.apiUrl + '/health');
+                const data = await response.json();
+                alert('🏓 Keep-Alive funcionando! Uptime: ' + Math.floor(data.uptime/60) + ' min');
+            } catch (e) {
+                alert('❌ Error en Keep-Alive');
             }
         }
         
@@ -104,7 +154,7 @@ app.get('/', (req, res) => {
             const result = document.getElementById('message-result');
             
             if (!phone || !message || !config.authToken) {
-                result.innerHTML = '<p style="color:red">❌ Completa todos los campos y configura el token</p>';
+                result.innerHTML = '<div class="alert alert-danger">❌ Completa todos los campos y configura el token</div>';
                 return;
             }
             
@@ -120,13 +170,13 @@ app.get('/', (req, res) => {
                 
                 const data = await response.json();
                 if (data.success) {
-                    result.innerHTML = '<p style="color:green">✅ Mensaje enviado correctamente</p>';
+                    result.innerHTML = '<div class="alert alert-success">✅ Mensaje enviado correctamente</div>';
                     document.getElementById('message-text').value = '';
                 } else {
-                    result.innerHTML = '<p style="color:red">❌ Error: ' + data.error + '</p>';
+                    result.innerHTML = '<div class="alert alert-danger">❌ Error: ' + data.error + '</div>';
                 }
             } catch (e) {
-                result.innerHTML = '<p style="color:red">❌ Error de conexión</p>';
+                result.innerHTML = '<div class="alert alert-danger">❌ Error de conexión</div>';
             }
         }
         
@@ -152,6 +202,9 @@ app.get('/', (req, res) => {
             }
         }
         
+        // Auto-refresh cada 30 segundos
+        setInterval(refreshStatus, 30000);
+        
         window.onload = () => {
             loadConfig();
             refreshStatus();
@@ -161,9 +214,8 @@ app.get('/', (req, res) => {
 </html>`)
 })
 
-// Middleware de autenticación (SOLO para rutas de API, NO para dashboard)
+// Middleware de autenticación
 app.use((req, res, next) => {
-  // Permitir endpoints públicos sin autenticación
   if (req.path === '/health' || req.path === '/' || req.path === '/qr-html') {
     return next()
   }
@@ -175,7 +227,7 @@ app.use((req, res, next) => {
   next()
 })
 
-// Rutas principales (CON autenticación)
+// Rutas principales
 app.use('/', mensajeRoute)
 
 // Manejo de errores global
@@ -199,6 +251,13 @@ app.use('*', (req, res) => {
 const server = app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`)
   console.log(`🔐 Usando token de autorización: ${AUTH_TOKEN.substring(0, 8)}...`)
+  console.log(`🏓 Keep-Alive configurado para: ${RENDER_SERVICE_URL}`)
+  
+  // Iniciar keep-alive después de 1 minuto
+  setTimeout(() => {
+    console.log('🏓 Iniciando Keep-Alive...')
+    keepAlive()
+  }, 60000)
   
   // Iniciar cliente WhatsApp
   iniciarCliente().catch(err => {
@@ -226,10 +285,8 @@ process.on('SIGTERM', () => {
 // Manejar errores no capturados
 process.on('uncaughtException', (err) => {
   console.error('❌ Excepción no capturada:', err)
-  // No cerrar el proceso, solo logear
 })
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Promesa rechazada no manejada:', reason)
-  // No cerrar el proceso, solo logear
 })
