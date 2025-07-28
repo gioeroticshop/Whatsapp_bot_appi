@@ -1,39 +1,32 @@
 const { default: makeWASocket, useSingleFileAuthState } = require('@whiskeysockets/baileys');
-const { useSingleFileAuthState } = require('@whiskeysockets/baileys')
-const { Boom } = require('@hapi/boom')
-const fs = require('fs')
-const path = require('path')
+const fs = require('fs');
+const path = require('path');
 
-const authFile = path.join(__dirname, 'session.json')
-const { state, saveState } = useSingleFileAuthState(authFile)
+// Ruta al archivo de autenticación
+const authFile = path.join(__dirname, '../auth_info.json');
+const { state, saveState } = useSingleFileAuthState(authFile);
 
-let sock
-
-const iniciarCliente = async () => {
-  sock = makeWASocket({
+// Función para iniciar el socket de WhatsApp
+const startSock = () => {
+  const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: true
-  })
-
-  sock.ev.on('creds.update', saveState)
+    printQRInTerminal: true,
+  });
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update
+    const { connection, lastDisconnect } = update;
     if (connection === 'close') {
-      const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
-      console.log('Conexión cerrada, reconectando...', shouldReconnect)
-      if (shouldReconnect) {
-        iniciarCliente()
-      }
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== 401;
+      console.log('Conexión cerrada, reconectando...', shouldReconnect);
+      if (shouldReconnect) startSock();
     } else if (connection === 'open') {
-      console.log('✅ Conectado a WhatsApp')
+      console.log('✅ Conectado a WhatsApp');
     }
-  })
-}
+  });
 
-const enviarMensaje = async (numero, mensaje) => {
-  const id = numero.includes('@s.whatsapp.net') ? numero : numero + '@s.whatsapp.net'
-  await sock.sendMessage(id, { text: mensaje })
-}
+  sock.ev.on('creds.update', saveState);
 
-module.exports = { iniciarCliente, enviarMensaje }
+  return sock;
+};
+
+module.exports = startSock;
