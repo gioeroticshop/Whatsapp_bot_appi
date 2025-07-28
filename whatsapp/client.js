@@ -29,7 +29,20 @@ const iniciarCliente = async () => {
     sock = makeWASocket({
       auth: state,
       printQRInTerminal: true,
-      browser: ['WhatsApp Bot', 'Chrome', '1.0.0'],
+      // OPCIONES DE BROWSER IDENTIFIER (elige una):
+      
+      // Opción 1: Simular WhatsApp Web normal
+      browser: ['WhatsApp Web', 'Chrome', '4.0.0'],
+      
+      // Opción 2: Simular aplicación de escritorio
+      // browser: ['WhatsApp Desktop', 'Windows', '2.2.0'],
+      
+      // Opción 3: Simular Chrome normal
+      // browser: ['Chrome (Linux)', '', ''],
+      
+      // Opción 4: Nombre personalizado discreto
+      // browser: ['VacunApp', 'Chrome', '1.0.0'],
+      
       keepAliveIntervalMs: 30000, // Keep alive cada 30 segundos
       connectTimeoutMs: 60000, // Timeout de conexión de 60 segundos
       defaultQueryTimeoutMs: 60000,
